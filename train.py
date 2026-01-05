@@ -119,11 +119,6 @@ def reseed_student(
     residual_score = residual.mean(dim=-1)
 
     with torch.no_grad():
-        teacher_positions = teacher.positions
-        distances = torch.cdist(teacher_positions, student.positions)
-        closest_student = distances.argmin(dim=1)
-        score = torch.zeros_like(avg_mass)
-
         residual_tiles = []
         for cam_idx, mass in enumerate(teacher_mass_per_tile):
             tiles_y, tiles_x = mass.shape[1:]
@@ -137,14 +132,12 @@ def reseed_student(
                     tile_residual[ty, tx] = residual_score[y0 : y0 + tile_size_y, x0 : x0 + tile_size_x].mean()
             residual_tiles.append(tile_residual)
 
+        teacher_positions = teacher.positions
         teacher_scores = torch.zeros((teacher_positions.shape[0],), device=student.device)
         for mass, tile_residual in zip(teacher_mass_per_tile, residual_tiles):
             teacher_scores += (mass * tile_residual[None, :, :]).sum(dim=(1, 2))
 
-        for t_idx, s_idx in enumerate(closest_student):
-            score[s_idx] += teacher_scores[t_idx]
-
-        candidates = torch.topk(score, k=replace_count, largest=True).indices
+        candidates = torch.topk(teacher_scores, k=replace_count, largest=True).indices
         student.positions[worst_idx] = teacher.positions[candidates] + 0.01 * torch.randn_like(
             teacher.positions[candidates]
         )

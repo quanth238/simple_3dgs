@@ -57,8 +57,8 @@ def init_student_from_teacher_kdtree(teacher: Dict[str, torch.Tensor], n: int) -
     student_opacities = []
 
     for cluster in clusters[:n]:
-        weights = opacities[cluster]
-        weights = weights / (weights.sum() + 1e-8)
+        raw_weights = opacities[cluster]
+        weights = raw_weights / (raw_weights.sum() + 1e-8)
 
         pos = (positions[cluster] * weights[:, None]).sum(axis=0)
         col = (colors[cluster] * weights[:, None]).sum(axis=0)
@@ -66,7 +66,7 @@ def init_student_from_teacher_kdtree(teacher: Dict[str, torch.Tensor], n: int) -
         var = (scales[cluster] ** 2 * weights[:, None]).sum(axis=0)
         merged_scale = np.sqrt(np.maximum(var, 1e-6))
 
-        opacity = float(np.clip(weights.sum(), 0.0, 1.0))
+        opacity = float(np.clip((raw_weights * weights).sum(), 0.0, 1.0))
 
         student_positions.append(pos)
         student_colors.append(col)

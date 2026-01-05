@@ -116,7 +116,7 @@ def render_with_stats(
     mass_per_tile = torch.zeros((positions.shape[0], tiles_y, tiles_x), device=device)
 
     depth_order = torch.norm(positions - camera.position[None, :], dim=-1)
-    sorted_indices = torch.argsort(depth_order, descending=True)
+    sorted_indices = torch.argsort(depth_order, descending=False)
 
     for idx in sorted_indices.tolist():
         x_2d, y_2d = proj[idx]
