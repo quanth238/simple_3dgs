@@ -101,51 +101,6 @@ def compute_losses(
     return l_img, l_ot, student_images, student_masses, debug_payload
 
 
-def reseed_student(
-    student: GaussianModel,
-    teacher: GaussianModel,
-    mass_history: List[torch.Tensor],
-    residual_history: List[torch.Tensor],
-    teacher_mass_per_tile: List[torch.Tensor],
-    replace_count: int,
-) -> None:
-    if not mass_history or replace_count == 0:
-        return
-
-    avg_mass = torch.stack([m.sum(dim=(1, 2)) for m in mass_history]).mean(dim=0)
-    _, worst_idx = torch.topk(avg_mass, k=replace_count, largest=False)
-
-    residual = torch.stack(residual_history).mean(dim=0)
-    residual_score = residual.mean(dim=-1)
-
-    with torch.no_grad():
-        residual_tiles = []
-        for cam_idx, mass in enumerate(teacher_mass_per_tile):
-            tiles_y, tiles_x = mass.shape[1:]
-            tile_size_y = residual_score.shape[0] // tiles_y
-            tile_size_x = residual_score.shape[1] // tiles_x
-            tile_residual = torch.zeros((tiles_y, tiles_x), device=student.device)
-            for ty in range(tiles_y):
-                for tx in range(tiles_x):
-                    y0 = ty * tile_size_y
-                    x0 = tx * tile_size_x
-                    tile_residual[ty, tx] = residual_score[y0 : y0 + tile_size_y, x0 : x0 + tile_size_x].mean()
-            residual_tiles.append(tile_residual)
-
-        teacher_positions = teacher.positions
-        teacher_scores = torch.zeros((teacher_positions.shape[0],), device=student.device)
-        for mass, tile_residual in zip(teacher_mass_per_tile, residual_tiles):
-            teacher_scores += (mass * tile_residual[None, :, :]).sum(dim=(1, 2))
-
-        candidates = torch.topk(teacher_scores, k=replace_count, largest=True).indices
-        student.positions[worst_idx] = teacher.positions[candidates] + 0.01 * torch.randn_like(
-            teacher.positions[candidates]
-        )
-        student.log_scales[worst_idx] = teacher.log_scales[candidates]
-        student.color_logits[worst_idx] = teacher.color_logits[candidates]
-        student.opacity_logits[worst_idx] = teacher.opacity_logits[candidates]
-
-
 def train_baseline(
     output_dir: str = "outputs",
     student_count: int = 4,
@@ -155,8 +110,6 @@ def train_baseline(
     beta_ot: float = 0.1,
     lambda_ssim: float = 0.2,
     gamma_reg: float = 1e-3,
-    reseed_period: int = 10,
-    reseed_count: int = 1,
     top_k: int = 20,
     normalize_mass: bool = True,
     debug_ot: bool = False,
@@ -186,9 +139,6 @@ def train_baseline(
 
     optimizer = torch.optim.Adam(student_model.parameters(), lr=1e-2)
     sinkhorn_params = SinkhornParams()
-    mass_history: List[torch.Tensor] = []
-    residual_history: List[torch.Tensor] = []
-
     for step in range(steps):
         optimizer.zero_grad()
         batch_cams = train_cams[:batch_views]
@@ -223,21 +173,6 @@ def train_baseline(
                 debug_payload["student_mass"],
             )
             print(f"OT debug stats: {stats}")
-
-        mass_history.append(torch.stack([m for m in student_masses]).mean(dim=0).detach())
-        residual_history.append(torch.stack([abs(s - t) for s, t in zip(student_images, batch_teacher_images)]).mean(dim=0))
-
-        if (step + 1) % reseed_period == 0:
-            reseed_student(
-                student_model,
-                teacher_model,
-                mass_history,
-                residual_history,
-                [cam.cached_mass for cam in batch_cams],
-                reseed_count,
-            )
-            mass_history.clear()
-            residual_history.clear()
 
     metrics = evaluate(student_model, val_cams, teacher_val_images)
     os.makedirs(output_dir, exist_ok=True)
