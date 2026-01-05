@@ -100,9 +100,16 @@ def render_with_stats(
     var_y = (scales[:, 1] * scale_factor) ** 2
     log_area = 0.5 * torch.log(var_x * var_y + 1e-12)
 
+    # Normalize projected coordinates and footprint scale to keep OT cost well-scaled.
+    u_norm = torch.stack(
+        [proj[:, 0] / max(width, 1), proj[:, 1] / max(height, 1)],
+        dim=-1,
+    )
+    log_area_norm = log_area - math.log(max(width * height, 1))
+
     proj_features = {
-        "u": proj,
-        "s": log_area,
+        "u": u_norm,
+        "s": log_area_norm,
         "rgb": colors,
     }
 
@@ -210,4 +217,3 @@ def make_camera(
         height=height,
         background_color=torch.tensor(background_color, dtype=torch.float32, device=position.device),
     )
-
