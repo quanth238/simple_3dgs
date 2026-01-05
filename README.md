@@ -27,11 +27,10 @@ Outputs are written to `outputs/`:
 python train.py
 ```
 
-Adjust hyperparameters by editing the `train_baseline(...)` call in `train.py` (e.g., `student_count`, `beta_ot`, `reseed_period`).
+Adjust hyperparameters by editing the `train_baseline(...)` call in `train.py` (e.g., `student_count`, `beta_ot`).
 
 ## Run the OT unit test
 
 ```bash
 python -m pytest -q
 ```
-
