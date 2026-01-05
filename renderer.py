@@ -164,37 +164,31 @@ def render_with_stats(
 
 
 def create_sample_scene(device: torch.device) -> Dict[str, torch.Tensor]:
-    positions = torch.tensor(
-        [
-            [0.0, 0.0, -5.0],
-            [1.0, 0.5, -4.0],
-            [-1.0, -0.5, -6.0],
-            [0.5, -1.0, -3.5],
-            [-0.5, 1.0, -4.5],
-        ],
-        device=device,
-    )
-    colors = torch.tensor(
-        [
-            [1.0, 0.0, 0.0],
-            [0.0, 1.0, 0.0],
-            [0.0, 0.0, 1.0],
-            [1.0, 1.0, 0.0],
-            [1.0, 0.0, 1.0],
-        ],
-        device=device,
-    )
-    scales = torch.tensor(
-        [
-            [0.3, 0.3, 0.3],
-            [0.35, 0.25, 0.3],
-            [0.25, 0.35, 0.3],
-            [0.3, 0.2, 0.3],
-            [0.2, 0.3, 0.3],
-        ],
-        device=device,
-    )
-    opacities = torch.full((5, 1), 0.8, device=device)
+    rings = []
+    colors = []
+    scales = []
+    opacities = []
+    num_rings = 3
+    points_per_ring = 8
+    for ring in range(num_rings):
+        radius = 0.4 + 0.3 * ring
+        z = -4.0 - 0.6 * ring
+        for i in range(points_per_ring):
+            angle = 2 * math.pi * i / points_per_ring
+            rings.append([radius * math.cos(angle), 0.3 * math.sin(angle), z])
+            color = [
+                0.5 + 0.5 * math.cos(angle),
+                0.5 + 0.5 * math.sin(angle),
+                0.3 + 0.2 * ring,
+            ]
+            colors.append(color)
+            scales.append([0.18 + 0.05 * ring, 0.18 + 0.04 * ring, 0.25 + 0.03 * ring])
+            opacities.append([0.75 - 0.1 * ring])
+
+    positions = torch.tensor(rings, device=device, dtype=torch.float32)
+    colors = torch.tensor(colors, device=device, dtype=torch.float32)
+    scales = torch.tensor(scales, device=device, dtype=torch.float32)
+    opacities = torch.tensor(opacities, device=device, dtype=torch.float32)
     return {
         "positions": positions,
         "scales": scales,
