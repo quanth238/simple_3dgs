@@ -22,7 +22,7 @@ def generate_cameras(
     cameras = []
     for angle in angles:
         position = torch.tensor(
-            [radius * torch.cos(angle), 0.5 * torch.sin(2 * angle), radius * torch.sin(angle)],
+            [radius * torch.cos(angle), 0.2 * torch.sin(2 * angle), radius * torch.sin(angle)],
             device=device,
         )
         cameras.append(make_camera(position, width, height, focal_length))
@@ -166,7 +166,7 @@ def train_baseline(
     student_init = init_student_from_teacher_kdtree(teacher_gaussians, student_count)
     student_model = GaussianModel.from_numpy_gaussians(student_init, learnable=True).to(device)
 
-    cameras = generate_cameras(device, num_views=6, radius=3.0, width=128, height=96, focal_length=300.0)
+    cameras = generate_cameras(device, num_views=6, radius=0.5, width=128, height=96, focal_length=300.0)
     train_cams = cameras[:4]
     val_cams = cameras[4:]
 

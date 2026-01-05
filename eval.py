@@ -34,7 +34,7 @@ def run_experiments(output_dir: str = "outputs", student_count: int = 4) -> Dict
     teacher_gaussians = create_sample_scene(device)
     teacher_model = GaussianModel.from_numpy_gaussians(teacher_gaussians, learnable=False).to(device)
 
-    cameras = generate_cameras(device, num_views=6, radius=3.0, width=128, height=96, focal_length=300.0)
+    cameras = generate_cameras(device, num_views=6, radius=0.5, width=128, height=96, focal_length=300.0)
     train_cams = cameras[:4]
     val_cams = cameras[4:]
 

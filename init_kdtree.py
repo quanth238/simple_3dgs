@@ -75,9 +75,8 @@ def init_student_from_teacher_kdtree(teacher: Dict[str, torch.Tensor], n: int) -
 
     device = teacher["positions"].device
     return {
-        "positions": torch.tensor(student_positions, dtype=torch.float32, device=device),
-        "scales": torch.tensor(student_scales, dtype=torch.float32, device=device),
-        "colors": torch.tensor(student_colors, dtype=torch.float32, device=device),
-        "opacities": torch.tensor(student_opacities, dtype=torch.float32, device=device),
+        "positions": torch.tensor(np.asarray(student_positions), dtype=torch.float32, device=device),
+        "scales": torch.tensor(np.asarray(student_scales), dtype=torch.float32, device=device),
+        "colors": torch.tensor(np.asarray(student_colors), dtype=torch.float32, device=device),
+        "opacities": torch.tensor(np.asarray(student_opacities), dtype=torch.float32, device=device),
     }
-
