@@ -5,7 +5,7 @@ from typing import Dict, List, Tuple
 import torch
 
 from init_kdtree import init_student_from_teacher_kdtree
-from ot_loss import SinkhornParams, build_proj_features, tilewise_ot_loss
+from ot_loss import SinkhornParams, build_proj_features, summarize_ot_inputs, tilewise_ot_loss
 from renderer import GaussianModel, create_sample_scene, make_camera, render_with_stats
 from utils import psnr, save_json, seed_everything, ssim
 
@@ -55,11 +55,13 @@ def compute_losses(
     lambda_ssim: float,
     beta_ot: float,
     top_k: int,
-) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor], List[torch.Tensor]]:
+    normalize_mass: bool,
+) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor], List[torch.Tensor], Dict[str, torch.Tensor]]:
     l_img = torch.tensor(0.0, device=student.device)
     l_ot = torch.tensor(0.0, device=student.device)
     student_images = []
     student_masses = []
+    debug_payload: Dict[str, torch.Tensor] = {}
 
     for cam, teacher_img in zip(cameras, teacher_images):
         student_img, student_proj, student_mass = render_with_stats(student, cam, tile_size=tile_size)
@@ -75,20 +77,28 @@ def compute_losses(
             teacher_s = cam.cached_proj["s"]
             teacher_rgb = cam.cached_proj["rgb"]
             teacher_proj = build_proj_features(teacher_u, teacher_s, teacher_rgb)
-            student_proj = build_proj_features(student_proj["u"], student_proj["s"], student_proj["rgb"])
+            student_proj_feat = build_proj_features(student_proj["u"], student_proj["s"], student_proj["rgb"])
 
             l_ot = l_ot + tilewise_ot_loss(
                 teacher_proj,
-                student_proj,
+                student_proj_feat,
                 cam.cached_mass,
                 student_mass,
                 params=sinkhorn_params,
                 top_k=top_k,
+                normalize_mass=normalize_mass,
             )
+            if not debug_payload:
+                debug_payload = {
+                    "teacher_proj": teacher_proj.detach(),
+                    "student_proj": student_proj_feat.detach(),
+                    "teacher_mass": cam.cached_mass.detach(),
+                    "student_mass": student_mass.detach(),
+                }
 
     l_img = l_img / len(cameras)
     l_ot = l_ot / len(cameras)
-    return l_img, l_ot, student_images, student_masses
+    return l_img, l_ot, student_images, student_masses, debug_payload
 
 
 def reseed_student(
@@ -155,6 +165,8 @@ def train_baseline(
     reseed_period: int = 10,
     reseed_count: int = 1,
     top_k: int = 20,
+    normalize_mass: bool = True,
+    debug_ot: bool = False,
     return_model: bool = False,
 ) -> Dict[str, float]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -190,7 +202,7 @@ def train_baseline(
         batch_teacher_images = teacher_train_images[:batch_views]
 
         start = time.time()
-        l_img, l_ot, student_images, student_masses = compute_losses(
+        l_img, l_ot, student_images, student_masses, debug_payload = compute_losses(
             student_model,
             batch_teacher_images,
             batch_cams,
@@ -199,6 +211,7 @@ def train_baseline(
             lambda_ssim,
             beta_ot,
             top_k,
+            normalize_mass,
         )
         reg = student_model.scales().mean() + student_model.opacities().mean()
         total = l_img + beta_ot * l_ot + gamma_reg * reg
@@ -209,6 +222,14 @@ def train_baseline(
         print(
             f"step {step:03d} | loss {total.item():.4f} | img {l_img.item():.4f} | ot {l_ot.item():.4f} | {elapsed:.3f}s"
         )
+        if debug_ot and step == 0 and beta_ot > 0:
+            stats = summarize_ot_inputs(
+                debug_payload["teacher_proj"],
+                debug_payload["student_proj"],
+                debug_payload["teacher_mass"],
+                debug_payload["student_mass"],
+            )
+            print(f"OT debug stats: {stats}")
 
         mass_history.append(torch.stack([m for m in student_masses]).mean(dim=0).detach())
         residual_history.append(torch.stack([abs(s - t) for s, t in zip(student_images, batch_teacher_images)]).mean(dim=0))

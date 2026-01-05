@@ -8,7 +8,7 @@ import torch
 
 @dataclass
 class SinkhornParams:
-    epsilon: float = 0.05
+    epsilon: float = 0.5
     reach: float = 1.0
     iterations: int = 30
 
@@ -67,6 +67,7 @@ def tilewise_ot_loss(
     student_mass: torch.Tensor,
     params: SinkhornParams,
     top_k: Optional[int] = None,
+    normalize_mass: bool = True,
 ) -> torch.Tensor:
     tiles_y, tiles_x = teacher_mass.shape[1], teacher_mass.shape[2]
     loss = torch.tensor(0.0, device=teacher_proj.device)
@@ -98,10 +99,14 @@ def tilewise_ot_loss(
 
             a_sel = a[a_idx]
             b_sel = b[b_idx]
+            tile_mass = (a_sel.sum() + b_sel.sum()) / 2.0
+            if normalize_mass:
+                a_sel = a_sel / (a_sel.sum() + 1e-8)
+                b_sel = b_sel / (b_sel.sum() + 1e-8)
             x = teacher_proj[a_idx]
             y = student_proj[b_idx]
 
-            loss = loss + unbalanced_sinkhorn_divergence(a_sel, b_sel, x, y, params)
+            loss = loss + unbalanced_sinkhorn_divergence(a_sel, b_sel, x, y, params) * tile_mass
 
     return loss
 
@@ -111,3 +116,23 @@ def build_proj_features(u: torch.Tensor, s: torch.Tensor, rgb: Optional[torch.Te
         return torch.cat([u, s.unsqueeze(-1)], dim=-1)
     return torch.cat([u, s.unsqueeze(-1), rgb], dim=-1)
 
+
+def summarize_ot_inputs(
+    teacher_proj: torch.Tensor,
+    student_proj: torch.Tensor,
+    teacher_mass: torch.Tensor,
+    student_mass: torch.Tensor,
+) -> dict:
+    a_sum = teacher_mass.sum(dim=(1, 2))
+    b_sum = student_mass.sum(dim=(1, 2))
+    if teacher_proj.numel() == 0 or student_proj.numel() == 0:
+        max_cost = 0.0
+    else:
+        max_cost = float(_pairwise_cost(teacher_proj, student_proj).max().item())
+    return {
+        "a_sum_mean": float(a_sum.mean().item()),
+        "b_sum_mean": float(b_sum.mean().item()),
+        "a_sum_max": float(a_sum.max().item()),
+        "b_sum_max": float(b_sum.max().item()),
+        "max_cost": max_cost,
+    }
